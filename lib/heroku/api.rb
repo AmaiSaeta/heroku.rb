@@ -37,8 +37,12 @@ module Heroku
   class API
 
     def initialize(options={})
-      @api_key = options.delete(:api_key) || ENV['HEROKU_API_KEY']
-      user_pass = ":#{@api_key}"
+      username = options.delete(:username).to_s
+      password = options.delete(:password).to_s
+      if username.empty? != password.empty?
+        raise ArgumentError, "either the username or password argument is missing"
+      end
+
       options = {
         :headers  => {},
         :host     => 'api.heroku.com',
@@ -49,12 +53,19 @@ module Heroku
         'Accept'                => 'application/json',
         'Accept-Encoding'       => 'gzip',
         #'Accept-Language'       => 'en-US, en;q=0.8',
-        'Authorization'         => "Basic #{Base64.encode64(user_pass).gsub("\n", '')}",
         'User-Agent'            => "heroku-rb/#{Heroku::API::VERSION}",
         'X-Ruby-Version'        => RUBY_VERSION,
         'X-Ruby-Platform'       => RUBY_PLATFORM
       }.merge(options[:headers])
       @connection = Excon.new("#{options[:scheme]}://#{options[:host]}", options)
+      @api_key = if username.empty? || password.empty?
+        options.delete(:api_key) || ENV['HEROKU_API_KEY']
+      else
+        response = post_login(username, password)
+        response.body.kind_of?(Hash) ? response.body['api_key'] : nil
+      end
+      user_pass = ":#{@api_key}"
+      @connection.connection[:headers]['Authorization'] = "Basic #{Base64.encode64(user_pass).gsub("\n", '')}"
     end
 
     def request(params, &block)
